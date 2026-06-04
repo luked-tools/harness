@@ -4580,6 +4580,13 @@ code.raw-uds-preview,
   word-break: break-all;
 }
 
+.raw-uds-truncation {
+  display: block;
+  margin-top: 6px;
+  color: var(--text3);
+  font-size: 11px;
+}
+
 tr:last-child td {
   border-bottom: 0;
 }

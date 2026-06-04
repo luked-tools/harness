@@ -569,6 +569,9 @@ function assertUiRendererContracts() {
   assert.ok(ui.compactCode("aa ".repeat(80), { limit: 32 }).includes("<details"));
   assert.ok(ui.compactCode("aa bb", { limit: 32 }).includes('title="aa bb"'));
   assert.ok(ui.rawBytesCell("aa ".repeat(80), { limit: 32 }).includes('class="raw-uds-cell"'));
+  const veryLongRawCell = ui.rawBytesCell("aa ".repeat(10000), { limit: 32, expandedLimit: 120 });
+  assert.ok(veryLongRawCell.includes("Showing the first 120"));
+  assert.equal(veryLongRawCell.includes("aa ".repeat(10000)), false);
 }
 
 function assertUdsDecoderContracts() {

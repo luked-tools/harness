@@ -55,12 +55,20 @@
   function compactCode(value, options = {}) {
     const text = String(value ?? "");
     const limit = Number(options.limit) || 96;
+    const expandedLimit = Number(options.expandedLimit) || 4096;
+    const titleLimit = Number(options.titleLimit) || 256;
     const className = options.className || "raw-uds-preview";
     const preview = text.length > limit ? `${text.slice(0, limit).trimEnd()} ...` : text;
     if (text.length <= limit) return `<code class="${escapeHtml(className)}" title="${escapeHtml(text)}">${escapeHtml(text)}</code>`;
-    return `<details class="${escapeHtml(className)}" title="${escapeHtml(text)}">
+    const expanded = text.length > expandedLimit ? `${text.slice(0, expandedLimit).trimEnd()} ...` : text;
+    const title = text.length > titleLimit ? `${formatNumber(text.length)} characters; expand for a capped preview` : text;
+    const truncationNote = text.length > expandedLimit
+      ? `<span class="raw-uds-truncation">Showing the first ${formatNumber(expandedLimit)} of ${formatNumber(text.length)} characters. Use the relevant export for the complete payload.</span>`
+      : "";
+    return `<details class="${escapeHtml(className)}" title="${escapeHtml(title)}">
       <summary><code>${escapeHtml(preview)}</code></summary>
-      <code class="raw-uds-full">${escapeHtml(text)}</code>
+      <code class="raw-uds-full">${escapeHtml(expanded)}</code>
+      ${truncationNote}
     </details>`;
   }
 
