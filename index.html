@@ -1,0 +1,737 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Harness</title>
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="styles.css?v=app-help-modal-1">
+</head>
+<body>
+  <main class="app">
+    <section class="toolbar">
+      <div>
+        <h1>Harness</h1>
+        <p class="app-subtitle">Automotive Diagnostic PCAP Analyser</p>
+        <p id="sourceLabel">Load a pcap to inspect UDS, DoIP, DHCP, ARP, and TCP.</p>
+      </div>
+      <div class="actions">
+        <div class="header-action-group">
+          <button class="nav-button active" type="button" data-tool-open="home">Home</button>
+          <button id="appHelpButton" type="button">Help</button>
+        </div>
+        <div class="header-action-group">
+          <label class="file-button secondary">
+            <input id="ecuMapInput" type="file" accept=".csv,text/csv">
+            Import ECU map
+          </label>
+          <button id="clearEcuMap" type="button">Clear ECU map</button>
+          <button id="unloadCapture" type="button" hidden>Unload file</button>
+          <label class="file-button">
+            <input id="fileInput" type="file" accept=".pcap,.cap,application/vnd.tcpdump.pcap">
+            Open pcap
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <section id="dropZone" class="drop-zone">
+      <strong>Drop a classic Ethernet .pcap here</strong>
+      <span>Parsing stays in your browser. pcapng is not supported.</span>
+    </section>
+
+    <section id="homeView" class="home-view">
+      <div class="home-head">
+        <div>
+          <p class="eyebrow">Harness workbench</p>
+          <h2 id="homeTitle">Load a capture to begin</h2>
+          <p id="homeIntro" class="subtle">Open or drop a classic Ethernet pcap. Parsing stays local.</p>
+        </div>
+        <div id="homeCaptureState" class="capture-state">No capture loaded</div>
+      </div>
+      <div id="emptyHome" class="empty-home">
+        <strong>Waiting for a pcap</strong>
+        <span>Open or drop a capture to enable the tools.</span>
+      </div>
+      <div class="tool-groups">
+        <section class="tool-group">
+          <div class="tool-group-head">
+            <span class="tool-kicker">Group 00</span>
+            <h3>Validation</h3>
+            <p>Warnings and errors in one review view.</p>
+          </div>
+          <div class="tool-group-grid">
+            <button class="tool-tile primary-tool" type="button" data-tool-open="validation">
+              <span class="tool-kicker">Review</span>
+              <strong>Validation Centre</strong>
+              <span>Review download, TCP, identity, UDS, topology, and parser findings.</span>
+              <code id="homeValidationCount">0 findings</code>
+            </button>
+          </div>
+        </section>
+
+        <section class="tool-group">
+          <div class="tool-group-head">
+            <span class="tool-kicker">Group 01</span>
+            <h3>UDS Diagnostics</h3>
+            <p>ECU views for services, DIDs, transfers, and raw UDS.</p>
+          </div>
+          <div class="tool-group-grid uds-group">
+            <button class="tool-tile primary-tool" type="button" data-tool-open="uds">
+              <span class="tool-kicker">UDS</span>
+              <strong>UDS Analyser</strong>
+              <span>Drill into services, DIDs, sessions, NRCs, and raw messages.</span>
+              <code id="homeUdsCount">0 events</code>
+            </button>
+            <button class="tool-tile" type="button" data-tool-open="dids">
+              <span class="tool-kicker">DID</span>
+              <strong>DID Explorer</strong>
+              <span>Service 0x22 and 0x62 reads grouped by ECU and DID.</span>
+              <code id="homeDidCount">0 DIDs</code>
+            </button>
+            <button class="tool-tile" type="button" data-tool-open="download">
+              <span class="tool-kicker">Transfer</span>
+              <strong>Software Download</strong>
+              <span>Transfers, validation, timing, and hex exports.</span>
+              <code id="homeTransferCount">0 transfers</code>
+            </button>
+          </div>
+        </section>
+
+        <section class="tool-group">
+          <div class="tool-group-head">
+            <span class="tool-kicker">Group 02</span>
+            <h3>Trace &amp; Transport</h3>
+            <p>Time views for diagnostics and TCP behaviour.</p>
+          </div>
+          <div class="tool-group-grid">
+            <button class="tool-tile" type="button" data-tool-open="trace">
+              <span class="tool-kicker">Trace</span>
+              <strong>Protocol Trace</strong>
+              <span>Timeline lanes for UDS, DoIP, DHCP, ARP, and TCP.</span>
+              <code id="homeTraceCount">0 lanes</code>
+            </button>
+            <button class="tool-tile" type="button" data-tool-open="transport">
+              <span class="tool-kicker">TCP</span>
+              <strong>Transport Timing</strong>
+              <span>ACK timing, retransmits, duplicate ACKs, and window events.</span>
+              <code id="homeTransportCount">0 flows</code>
+            </button>
+          </div>
+        </section>
+
+        <section class="tool-group">
+          <div class="tool-group-head">
+            <span class="tool-kicker">Group 03</span>
+            <h3>Network Discovery</h3>
+            <p>Announcements, addressing, identity, and samples.</p>
+          </div>
+          <div class="tool-group-grid">
+            <button class="tool-tile" type="button" data-tool-open="discovery">
+              <span class="tool-kicker">DoIP</span>
+              <strong>Discovery Console</strong>
+              <span>Announcements, decoded DoIP messages, DHCP, ARP, and hosts.</span>
+              <code id="homeDiscoveryCount">0 announcements</code>
+            </button>
+            <button class="tool-tile" type="button" data-tool-open="identity">
+              <span class="tool-kicker">L2/L3</span>
+              <strong>Address Identity</strong>
+              <span>IP, MAC, DHCP, ARP, and logical-address checks.</span>
+              <code id="homeIdentityCount">0 findings</code>
+            </button>
+            <button class="tool-tile" type="button" data-tool-open="topology">
+              <span class="tool-kicker">Topology</span>
+              <strong>Node Map</strong>
+              <span>Tester, gateway, endpoint, and logical ECU links.</span>
+              <code id="homeTopologyCount">0 links</code>
+            </button>
+            <button class="tool-tile" type="button" data-tool-open="raw">
+              <span class="tool-kicker">Raw</span>
+              <strong>Packet Samples</strong>
+              <span>DoIP, DHCP, ARP, and flow sample tables.</span>
+              <code id="homePacketCount">0 packets</code>
+            </button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="workbenchView" class="tool-view" hidden>
+      <section class="tool-header">
+        <button id="toolBack" type="button">Back to tools</button>
+        <div class="tool-header-copy">
+          <p id="toolEyebrow" class="eyebrow">Instrument</p>
+          <h2 id="toolTitle">UDS Analyser</h2>
+          <p id="toolDescription" class="subtle">Select a tool from the home view.</p>
+        </div>
+        <button id="toolInfoButton" class="tool-info-button" type="button">Tool Info</button>
+      </section>
+
+    <section class="metrics tool-section" id="metrics"></section>
+
+    <section id="validationTool" class="panel tool-section">
+      <div class="panel-head">
+        <div>
+          <h2>Validation Centre</h2>
+          <p id="validationSummary" class="subtle">Warnings and errors for the loaded pcap.</p>
+        </div>
+        <div class="export-actions">
+          <button id="exportValidationCentre" type="button">Export validation CSV</button>
+        </div>
+      </div>
+      <div id="validationMetrics" class="overview-grid"></div>
+      <div class="validation-controls">
+        <select id="validationViewFilter">
+          <option value="all">All findings</option>
+          <option value="action-required">Action Suggested</option>
+          <option value="nrc-summary">UDS NRC summary</option>
+          <option value="network">Network / TCP</option>
+          <option value="identity-topology">Identity / topology</option>
+          <option value="download">Software download</option>
+          <option value="informational">Informational</option>
+        </select>
+        <select id="validationSeverityFilter">
+          <option value="all">All severities</option>
+          <option value="actionable">Warnings &amp; errors</option>
+          <option value="error">Errors only</option>
+          <option value="warning">Warnings only</option>
+          <option value="info">Info only</option>
+        </select>
+        <select id="validationSourceFilter">
+          <option value="all">All sources</option>
+        </select>
+        <select id="validationCategoryFilter">
+          <option value="all">All categories</option>
+        </select>
+        <input id="validationSearch" type="search" placeholder="Search ECU, packet, finding">
+        <button id="openValidationNrcSummary" type="button">Open NRC summary</button>
+      </div>
+      <div class="validation-centre-layout">
+        <div class="table-wrap validation-table-wrap collapsible-table-pane" data-table-pane-label="Validation findings" data-scroll-mirror="false">
+          <table>
+            <thead><tr><th>Severity</th><th>Source</th><th>Entity</th><th>Finding</th><th>Evidence</th><th>Last seen</th><th>Action</th></tr></thead>
+            <tbody id="validationFindings"></tbody>
+          </table>
+        </div>
+        <aside id="validationDetail" class="validation-detail"></aside>
+      </div>
+    </section>
+
+    <section id="discoveryTool" class="grid two tool-section">
+      <article class="panel doip-lifecycle-panel">
+        <div class="panel-head">
+          <div>
+            <h2>DoIP Lifecycle</h2>
+            <p id="doipLifecycleSummary" class="subtle">ARP, TCP socket, discovery, routing activation, and diagnostics by node.</p>
+          </div>
+          <select id="doipLifecycleFilter" aria-label="Filter DoIP lifecycle nodes">
+            <option value="all">All</option>
+            <option value="issues">Issues</option>
+            <option value="ethernet">Ethernet nodes</option>
+            <option value="gateways">Gateways/sockets</option>
+            <option value="behind">Behind-socket logicals</option>
+            <option value="missing-routing">Missing routing</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
+        <div id="discoveryMetrics" class="overview-grid discovery-capture-metrics"></div>
+        <div id="doipLifecycleMetrics" class="lifecycle-metrics"></div>
+        <div class="doip-lifecycle-layout">
+          <div id="doipLifecycleNodes" class="doip-lifecycle-nodes"></div>
+          <div class="doip-lifecycle-workspace">
+            <div id="doipLifecycleTimeline" class="doip-lifecycle-timeline"></div>
+            <div id="doipLifecycleStageDetail" class="doip-lifecycle-detail"></div>
+          </div>
+        </div>
+      </article>
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Protocol Mix</h2>
+          <input id="protocolFilter" type="search" placeholder="Filter">
+        </div>
+        <div id="protocolMix" class="bars"></div>
+      </article>
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Top Talkers</h2>
+          <input id="hostFilter" type="search" placeholder="MAC or IP">
+        </div>
+        <div class="table-wrap collapsible-table-pane" data-table-pane-label="TCP flows">
+          <table>
+            <thead><tr><th>MAC</th><th>IPs</th><th>Packets</th><th>Bytes</th></tr></thead>
+            <tbody id="hostsTable"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section class="grid two tool-section">
+      <article class="panel">
+        <div class="panel-head">
+          <h2>DoIP Vehicle Announcements</h2>
+          <span id="announcementCount" class="pill">0</span>
+        </div>
+        <div id="announcements" class="cards"></div>
+      </article>
+      <article class="panel">
+        <div class="panel-head">
+          <h2>Decoded DoIP Messages</h2>
+          <span id="doipCount" class="pill">0</span>
+        </div>
+        <div id="doipPayloads" class="bars"></div>
+      </article>
+    </section>
+
+    <section class="grid two tool-section">
+      <article class="panel">
+        <div class="panel-head">
+          <h2>DHCP</h2>
+          <span id="dhcpCount" class="pill">0</span>
+        </div>
+        <div id="dhcpSummary" class="stack"></div>
+      </article>
+      <article class="panel">
+        <div class="panel-head">
+          <h2>ARP</h2>
+          <span id="arpCount" class="pill">0</span>
+        </div>
+        <div id="arpSummary" class="stack"></div>
+      </article>
+    </section>
+
+    <section id="traceTool" class="panel tool-section">
+      <div class="panel-head">
+        <div>
+          <h2>Protocol Trace</h2>
+          <p id="traceSummary" class="subtle">Diagnostic timeline by ECU.</p>
+        </div>
+        <div class="trace-controls">
+          <label><input class="trace-layer-toggle" type="checkbox" data-trace-layer="uds" checked> UDS</label>
+          <label><input class="trace-layer-toggle" type="checkbox" data-trace-layer="doip" checked> DoIP</label>
+          <label><input class="trace-layer-toggle" type="checkbox" data-trace-layer="dhcp" checked> DHCP</label>
+          <label><input class="trace-layer-toggle" type="checkbox" data-trace-layer="arp" checked> ARP</label>
+          <label><input class="trace-layer-toggle" type="checkbox" data-trace-layer="ack" checked> DoIP ACK/NAK</label>
+          <label><input class="trace-layer-toggle" type="checkbox" data-trace-layer="transport"> TCP</label>
+          <button id="traceAdvancedToggle" type="button">Advanced layers</button>
+          <button id="traceZoomBack" type="button" disabled>Back</button>
+          <button id="traceZoomReset" type="button" disabled>Reset zoom</button>
+          <span id="traceWindow" class="trace-window">Full range</span>
+          <button id="traceMeasureToggle" type="button" aria-pressed="false">Measure</button>
+          <button id="traceCompareClear" type="button" disabled>Clear compare</button>
+          <span id="traceCompareDelta" class="trace-window trace-compare-delta">Measure off</span>
+          <select id="traceEcuFilter">
+            <option value="all">All ECUs</option>
+          </select>
+          <select id="traceKindFilter">
+            <option value="all">All events</option>
+            <option value="request">Requests</option>
+            <option value="positive">Positive</option>
+            <option value="negative">Negative</option>
+            <option value="pending">Pending</option>
+            <option value="transfer">Transfers</option>
+          </select>
+        </div>
+      </div>
+      <div id="traceAdvancedPanel" class="trace-advanced" hidden></div>
+      <div id="traceLayerCounts" class="trace-layer-counts"></div>
+      <div id="traceViewport" class="trace-viewport"></div>
+      <div id="traceTooltip" class="trace-tooltip" hidden></div>
+    </section>
+
+    <section id="transportTool" class="panel tool-section">
+      <div class="panel-head">
+        <div>
+          <h2>Transport Timing</h2>
+          <p id="transportSummary" class="subtle">DoIP TCP timing analysis.</p>
+        </div>
+        <div class="export-actions">
+          <select id="transportFlowFilter">
+            <option value="all">All flows</option>
+            <option value="ecus">Diagnostic flows</option>
+            <option value="testers">Testers</option>
+            <option value="gateways">DoIP Ethernet nodes</option>
+            <option value="warnings">Flows with warnings</option>
+            <option value="retransmissions">Flows with retransmissions</option>
+            <option value="gaps">Flows with gaps</option>
+          </select>
+          <button id="exportTcpEvents" type="button">Export TCP events CSV</button>
+          <button id="exportTcpAcks" type="button">Export ACK timings CSV</button>
+        </div>
+      </div>
+      <div class="transport-layout">
+        <div class="table-wrap transport-flow-wrap collapsible-table-pane" data-table-pane-label="TCP timing windows" data-fixed-table-controls="true">
+          <table>
+            <thead><tr><th>Tester / IP</th><th>DoIP node / IP</th><th>Packets</th><th>Bytes</th><th>ACK p95</th><th>Flow control</th><th>TCP observations</th><th>Health</th></tr></thead>
+            <tbody id="tcpFlowTable"></tbody>
+          </table>
+        </div>
+        <div id="tcpFlowDetail" class="tcp-detail"></div>
+      </div>
+    </section>
+
+    <section id="downloadTool" class="panel download-panel tool-section">
+      <div class="panel-head">
+        <div>
+          <h2>Software Download</h2>
+          <p id="downloadSummary" class="subtle">UDS transfer validation.</p>
+        </div>
+        <div class="download-filters">
+          <label class="inline-check"><input id="downloadExportableOnly" type="checkbox"> Exportable hex only</label>
+          <details id="downloadEcuFilter" class="checkbox-select download-ecu-select">
+            <summary id="downloadEcuSummary">All ECUs</summary>
+            <div id="downloadEcuOptions" class="checkbox-select-menu"></div>
+          </details>
+          <details id="downloadGatewayFilter" class="checkbox-select download-gateway-select">
+            <summary id="downloadGatewaySummary">All gateways/IPs</summary>
+            <div id="downloadGatewayOptions" class="checkbox-select-menu"></div>
+          </details>
+          <select id="downloadTypeFilter">
+            <option value="all">All types</option>
+            <option value="download">RequestDownload</option>
+            <option value="upload">RequestUpload</option>
+            <option value="fileTransfer">RequestFileTransfer</option>
+          </select>
+          <select id="downloadSeverityFilter">
+            <option value="all">All validation</option>
+            <option value="error">Errors</option>
+            <option value="warning">Warnings</option>
+            <option value="ok">Clean</option>
+          </select>
+          <div class="download-export-group" aria-label="Software download exports">
+            <button id="exportDownloadSessions" type="button">Export segments CSV</button>
+            <button id="exportDownloadValidation" type="button">Export validation CSV</button>
+            <button id="exportDownloadTimeline" type="button">Export timeline PNG</button>
+          </div>
+          <button id="openDownloadCampaignModal" class="campaign-summary-button" type="button">Campaign Summary</button>
+        </div>
+      </div>
+      <div id="downloadMetrics" class="overview-grid"></div>
+      <div class="download-layout">
+        <div class="table-wrap download-session-wrap collapsible-table-pane" data-table-pane-label="Transfer segments" data-fixed-table-controls="true">
+          <table>
+            <thead><tr><th>ECU</th><th>Type</th><th>Address</th><th>Size</th><th>Expected</th><th>Data</th><th>ACKed</th><th>Bytes</th><th>Validation</th></tr></thead>
+            <tbody id="downloadSessionTable"></tbody>
+          </table>
+        </div>
+        <div class="download-detail">
+          <div id="downloadDetailHead" class="download-detail-head"></div>
+          <div class="tabs download-tabs" role="tablist" aria-label="Software download views">
+            <button class="download-tab download-tab-summary active" type="button" data-download-tab="matrix">ECU Summary</button>
+            <button class="download-tab" type="button" data-download-tab="overview">Overview</button>
+            <button class="download-tab" type="button" data-download-tab="conditions">Pre/Post Conditions</button>
+            <button class="download-tab" type="button" data-download-tab="blocks">Blocks</button>
+            <button class="download-tab" type="button" data-download-tab="rate">Transfer Rate</button>
+            <button class="download-tab" type="button" data-download-tab="timeline">Campaign Timeline</button>
+            <button class="download-tab" type="button" data-download-tab="validation">Validation</button>
+            <button class="download-tab" type="button" data-download-tab="raw">Raw Messages</button>
+          </div>
+          <div id="downloadTabContent" class="tab-content"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="udsTool" class="panel diagnostics-panel tool-section">
+      <div class="panel-head">
+        <div>
+          <h2>ECU Diagnostics</h2>
+          <p class="subtle" id="diagnosticsSummary">Select an ECU to inspect UDS traffic.</p>
+        </div>
+        <input id="ecuFilter" type="search" placeholder="Logical address, IP, VIN">
+      </div>
+      <div class="diagnostics-layout">
+        <div class="table-wrap ecu-list-wrap collapsible-table-pane" data-table-pane-label="ECU list" data-fixed-table-controls="true">
+          <table>
+            <thead>
+              <tr><th>ECU</th><th>Name</th><th>IPs</th><th>Req</th><th>Resp</th><th>DIDs</th><th>Transfers</th><th>NRC</th><th>Last</th></tr>
+            </thead>
+            <tbody id="ecuTable"></tbody>
+          </table>
+        </div>
+        <div class="ecu-detail">
+          <div class="detail-head">
+            <div>
+              <h3 id="selectedEcuTitle">No ECU selected</h3>
+              <p id="selectedEcuMeta" class="subtle">Diagnostics appear after parsing.</p>
+            </div>
+            <div class="export-actions">
+              <button id="exportEvents" type="button">Export events CSV</button>
+              <button id="exportDids" type="button">Export DIDs CSV</button>
+              <button id="exportAllDids" type="button">Export all DIDs CSV</button>
+              <button id="exportDtcs" type="button">Export DTCs CSV</button>
+              <button id="exportTransfers" type="button">Export transfers CSV</button>
+            </div>
+          </div>
+          <div class="tabs" role="tablist" aria-label="Diagnostic views">
+            <button class="tab active" type="button" data-tab="overview">Overview</button>
+            <button class="tab" type="button" data-tab="timeline">Timeline</button>
+            <button class="tab" type="button" data-tab="dids">DID Reads</button>
+            <button class="tab" type="button" data-tab="dtcs">DTCs</button>
+            <button class="tab" type="button" data-tab="transfers">Transfers</button>
+            <button class="tab" type="button" data-tab="routines">Routines</button>
+            <button class="tab" type="button" data-tab="services">Services</button>
+            <button class="tab" type="button" data-tab="errors">Errors</button>
+            <button class="tab" type="button" data-tab="raw">Raw Messages</button>
+          </div>
+          <div id="ecuTabContent" class="tab-content"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="rawTool" class="panel tool-section">
+      <div class="panel-head">
+        <h2>Packet Samples</h2>
+        <select id="sampleSelect">
+          <option value="doip">DoIP</option>
+          <option value="dhcp">DHCP</option>
+          <option value="arp">ARP</option>
+          <option value="flows">Flows</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead id="sampleHead"></thead>
+          <tbody id="sampleBody"></tbody>
+        </table>
+      </div>
+    </section>
+    <section id="identityTool" class="panel tool-section">
+      <div class="panel-head">
+        <div>
+          <h2>Address Identity</h2>
+          <p id="identitySummary" class="subtle">IP, MAC, DHCP, ARP, and logical-address findings.</p>
+        </div>
+        <select id="identitySeverity">
+          <option value="all">All findings</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="info">Info</option>
+        </select>
+      </div>
+      <div id="identityMetrics" class="overview-grid"></div>
+      <div class="grid two">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Severity</th><th>Entity</th><th>Grouped findings</th></tr></thead>
+            <tbody id="identityFindings"></tbody>
+          </table>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>MAC</th><th>Role</th><th>IPs</th><th>DHCP</th><th>DoIP Logical</th></tr></thead>
+            <tbody id="identityHostMap"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+    <section id="topologyTool" class="panel tool-section">
+      <div class="panel-head">
+        <div>
+          <h2>Socket Map</h2>
+          <p id="topologySummary" class="subtle">DoIP socket endpoints and routed logical-address evidence.</p>
+        </div>
+        <div class="export-actions">
+          <button id="openTopologyNodeMap" type="button">Open node map</button>
+          <button id="exportTopologyNodes" type="button">Export sockets CSV</button>
+          <button id="exportTopologyEdges" type="button">Export mappings CSV</button>
+        </div>
+      </div>
+      <div class="topology-layout">
+        <div class="topology-map-wrap">
+          <div id="topologyMap" class="topology-map socket-map" role="list" aria-label="DoIP socket map"></div>
+        </div>
+        <aside id="topologyDetail" class="topology-detail"></aside>
+      </div>
+      <details class="topology-tables-drawer">
+        <summary>Socket mapping evidence</summary>
+        <div class="topology-tables">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Socket/IP</th><th>Direct logical</th><th>Name</th><th>Routed logicals</th><th>Rejected targets</th></tr></thead>
+              <tbody id="topologyGatewayTable"></tbody>
+            </table>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Logical address</th><th>Logical</th><th>Socket IP</th><th>Status</th><th>Packets</th></tr></thead>
+              <tbody id="topologyEcuGatewayTable"></tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+    </section>
+    </section>
+
+    <div id="validationNrcSummaryModal" class="modal-overlay" hidden>
+      <section class="modal-panel validation-nrc-modal" role="dialog" aria-modal="true" aria-labelledby="validationNrcSummaryTitle">
+        <div class="modal-head">
+          <div>
+            <h3 id="validationNrcSummaryTitle">UDS NRC Summary</h3>
+            <p id="validationNrcSummarySubtitle" class="subtle">Grouped negative response evidence for the current Validation Centre filters.</p>
+          </div>
+          <div class="export-actions">
+            <button id="closeValidationNrcSummary" type="button">Close</button>
+          </div>
+        </div>
+        <div id="validationNrcSummary" class="modal-body validation-nrc-summary"></div>
+      </section>
+    </div>
+
+    <div id="toolInfoModal" class="modal-overlay" hidden>
+      <section class="modal-panel tool-info-modal" role="dialog" aria-modal="true" aria-labelledby="toolInfoTitle">
+        <div class="modal-head">
+          <div>
+            <p id="toolInfoEyebrow" class="eyebrow">Tool info</p>
+            <h3 id="toolInfoTitle">Tool Info</h3>
+            <p id="toolInfoSummary" class="subtle">How to read the selected tool.</p>
+          </div>
+          <button id="closeToolInfo" type="button">Close</button>
+        </div>
+        <div id="toolInfoBody" class="modal-body tool-info-body"></div>
+      </section>
+    </div>
+
+    <div id="appHelpModal" class="modal-overlay" hidden>
+      <section class="modal-panel app-help-modal" role="dialog" aria-modal="true" aria-labelledby="appHelpTitle">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">Harness help</p>
+            <h3 id="appHelpTitle">About Harness</h3>
+            <p class="subtle">A browser-based automotive diagnostic PCAP analyser for UDS, DoIP, TCP, DHCP, ARP, topology, identity, and software download evidence.</p>
+          </div>
+          <button id="closeAppHelp" type="button">Close</button>
+        </div>
+        <div class="modal-body app-help-body">
+          <section class="app-help-hero">
+            <h4>What Harness is for</h4>
+            <p>Harness helps review classic Ethernet PCAP captures from automotive diagnostics. It groups protocol evidence into focused tools so you can inspect validation findings, UDS behaviour, DoIP discovery, node routing, TCP timing, address identity, and software download completeness.</p>
+          </section>
+          <div class="app-help-grid">
+            <section>
+              <h4>Typical workflow</h4>
+              <ul>
+                <li>Load a classic Ethernet pcap.</li>
+                <li>Start in Validation Centre for the highest-signal findings.</li>
+                <li>Use Tool Info inside each tool for context-specific interpretation notes.</li>
+                <li>Jump into UDS, SWDL, Discovery, Node Map, Transport Timing, or Address Identity for supporting evidence.</li>
+              </ul>
+            </section>
+            <section>
+              <h4>Project details</h4>
+              <dl class="app-help-details">
+                <dt>Author</dt>
+                <dd><a href="https://www.linkedin.com/in/ldarragh/" target="_blank" rel="noopener noreferrer">Luke Darragh</a></dd>
+                <dt>Source</dt>
+                <dd><a href="https://github.com/luked-tools/harness.git" target="_blank" rel="noopener noreferrer">github.com/luked-tools/harness</a></dd>
+                <dt>Build note</dt>
+                <dd>Made with a lot of help and input from our new robot friends.</dd>
+              </dl>
+            </section>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="topologyNodeMapModal" class="modal-overlay" hidden>
+      <section class="modal-panel topology-node-map-modal" role="dialog" aria-modal="true" aria-labelledby="topologyNodeMapTitle">
+        <div class="modal-head">
+          <div>
+            <h3 id="topologyNodeMapTitle">DoIP Node Map</h3>
+            <p class="subtle">Tester to gateway/socket to downstream Ethernet node view.</p>
+          </div>
+          <div class="export-actions">
+            <button id="closeTopologyNodeMap" type="button">Close</button>
+          </div>
+        </div>
+        <div id="topologyNodeMapBody" class="modal-body"></div>
+      </section>
+    </div>
+
+    <div id="rateCampaignModal" class="modal-overlay" hidden>
+      <section class="modal-panel rate-campaign-modal" role="dialog" aria-modal="true" aria-labelledby="rateCampaignTitle">
+        <div class="modal-head">
+          <div>
+            <h3 id="rateCampaignTitle">Campaign Comparison</h3>
+            <p class="subtle">Filtered ECU transfer rates.</p>
+          </div>
+          <div class="export-actions">
+            <button id="exportRateCampaignCsv" type="button">Export comparison CSV</button>
+            <button id="closeRateCampaignModal" type="button">Close</button>
+          </div>
+        </div>
+        <div id="rateCampaignModalBody" class="modal-body"></div>
+      </section>
+    </div>
+    <div id="downloadCampaignModal" class="modal-overlay" hidden>
+      <section class="modal-panel rate-campaign-modal" role="dialog" aria-modal="true" aria-labelledby="downloadCampaignTitle">
+        <div class="modal-head">
+          <div>
+            <h3 id="downloadCampaignTitle">Programming Campaign</h3>
+            <p class="subtle">Filtered campaign health and timing.</p>
+          </div>
+          <div class="export-actions">
+            <button id="closeDownloadCampaignModal" type="button">Close</button>
+          </div>
+        </div>
+        <div id="downloadCampaignModalBody" class="modal-body"></div>
+      </section>
+    </div>
+    <div id="didPlotModal" class="modal-overlay" hidden>
+      <section class="modal-panel did-plot-modal" role="dialog" aria-modal="true" aria-labelledby="didPlotTitle">
+        <div class="modal-head">
+          <div>
+            <h3 id="didPlotTitle">DID Value Plot</h3>
+            <p id="didPlotSubtitle" class="subtle">Unsigned one-byte DID values over time.</p>
+          </div>
+          <div class="export-actions">
+            <button id="closeDidPlotModal" type="button">Close</button>
+          </div>
+        </div>
+        <div id="didPlotModalBody" class="modal-body"></div>
+      </section>
+    </div>
+  </main>
+
+  <div id="captureOverlay" class="capture-overlay" role="dialog" aria-modal="true" aria-labelledby="captureOverlayTitle">
+    <div class="capture-overlay-card">
+      <div id="captureOverlaySpinner" class="capture-spinner" aria-hidden="true"></div>
+      <p id="captureOverlayKicker" class="eyebrow">Capture required</p>
+      <h2 id="captureOverlayTitle">Load a pcap to begin</h2>
+      <p id="captureOverlayText">Open or drop a classic Ethernet pcap here. The page will unlock once a capture has been loaded.</p>
+      <div class="capture-overlay-actions">
+        <button id="captureOverlayOpen" type="button">Open pcap</button>
+        <button id="captureOverlayLoadCached" type="button" hidden>Load cached file</button>
+        <button id="captureOverlayStop" type="button" hidden>Stop loading cached file</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="mappings.js?v=did-history-plot-1"></script>
+  <script src="src/js/protocol-reference.js?v=diagnostic-nack-display-1"></script>
+  <script src="src/js/formatters.js?v=split-1"></script>
+  <script src="src/js/ui-renderer.js?v=raw-cell-preview-1"></script>
+  <script src="src/js/mapping-utils.js?v=ecu-acronyms-3"></script>
+  <script src="src/js/uds-decoder.js?v=split-1"></script>
+  <script src="src/js/tcp-doip-reassembly.js?v=functionality-fixes-1"></script>
+  <script src="src/js/pcap-parser.js?v=doip-lifecycle-detail-1"></script>
+  <script src="src/js/tcp-analysis.js?v=rst-zero-window-1"></script>
+  <script src="src/js/diagnostic-analysis.js?v=dtc-clear-display-1"></script>
+  <script src="src/js/identity-analysis.js?v=unknown-target-mac-exclusion-1"></script>
+  <script src="src/js/topology-analysis.js?v=unknown-target-highlight-1"></script>
+  <script src="src/js/download-analysis.js?v=transfer-exit-error-1"></script>
+  <script src="src/js/validation-analysis.js?v=diagnostic-nack-display-1"></script>
+  <script src="src/js/doip-lifecycle-analysis.js?v=doip-lifecycle-detail-1"></script>
+  <script src="src/js/discovery-renderer.js?v=diagnostic-nack-display-1"></script>
+  <script src="src/js/validation-renderer.js?v=evidence-collapse-1"></script>
+  <script src="src/js/identity-renderer.js?v=ui-common-1"></script>
+  <script src="src/js/transport-renderer.js?v=tcp-window-scale-1"></script>
+  <script src="src/js/topology-renderer.js?v=unknown-target-highlight-1"></script>
+  <script src="src/js/diagnostics-renderer.js?v=service-breakdown-1"></script>
+  <script src="src/js/trace-renderer.js?v=ui-common-1"></script>
+  <script src="src/js/download-renderer.js?v=did-axis-labels-1"></script>
+  <script src="src/js/download-controller.js?v=campaign-ecu-labels-1"></script>
+  <script src="src/js/trace-controller.js?v=ui-common-1"></script>
+  <script src="src/js/exporters.js?v=socket-map-2"></script>
+  <script src="src/js/persistence.js?v=unload-capture-1"></script>
+  <script src="app.js?v=app-help-modal-1"></script>
+</body>
+</html>

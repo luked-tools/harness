@@ -1,0 +1,28 @@
+# Operating system and editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Runtime caches and generated artifacts
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+coverage/
+dist/
+build/
+
+# Python tooling was removed from the project, but stale caches can linger.
+__pycache__/
+*.py[cod]
+
+# Capture files can be large or sensitive; keep fixtures deliberate.
+*.pcap
+*.pcapng
+*.cap
+!tests/fixtures/**
+
+# Local exports from analysis sessions
+generated-report.js
+exports/
