@@ -60,6 +60,10 @@
     const className = options.className || "raw-uds-preview";
     const preview = text.length > limit ? `${text.slice(0, limit).trimEnd()} ...` : text;
     if (text.length <= limit) return `<code class="${escapeHtml(className)}" title="${escapeHtml(text)}">${escapeHtml(text)}</code>`;
+    if (options.expandable === false) {
+      const title = `${formatNumber(text.length)} characters; full payload available via export`;
+      return `<code class="${escapeHtml(`${className} raw-uds-preview-static`)}" title="${escapeHtml(title)}">${escapeHtml(preview)}</code>`;
+    }
     const expanded = text.length > expandedLimit ? `${text.slice(0, expandedLimit).trimEnd()} ...` : text;
     const title = text.length > titleLimit ? `${formatNumber(text.length)} characters; expand for a capped preview` : text;
     const truncationNote = text.length > expandedLimit

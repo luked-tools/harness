@@ -569,6 +569,9 @@ function assertUiRendererContracts() {
   assert.ok(ui.compactCode("aa ".repeat(80), { limit: 32 }).includes("<details"));
   assert.ok(ui.compactCode("aa bb", { limit: 32 }).includes('title="aa bb"'));
   assert.ok(ui.rawBytesCell("aa ".repeat(80), { limit: 32 }).includes('class="raw-uds-cell"'));
+  const nonExpandableRawCell = ui.rawBytesCell("aa ".repeat(80), { limit: 32, expandable: false });
+  assert.equal(nonExpandableRawCell.includes("<details"), false);
+  assert.ok(nonExpandableRawCell.includes("full payload available via export"));
   const veryLongRawCell = ui.rawBytesCell("aa ".repeat(10000), { limit: 32, expandedLimit: 120 });
   assert.ok(veryLongRawCell.includes("Showing the first 120"));
   assert.equal(veryLongRawCell.includes("aa ".repeat(10000)), false);
@@ -3008,7 +3011,14 @@ function assertDownloadRendererContracts() {
     validation: [{ severity: "warning", category: "Completeness", title: "Gap", detail: "Missing block", packet: 99 }]
   }).includes("Missing block"));
   assert.ok(renderer.renderDownloadRaw(session, { formatTimeDelta: () => "+1.000s" }).includes("Transfer Data"));
-  assert.ok(renderer.renderDownloadRaw({ ...session, events: [{ ...session.events[0], raw: "36 ".repeat(80) }] }, { formatTimeDelta: () => "+1.000s" }).includes("<details"));
+  const rawTransferDataHtml = renderer.renderDownloadRaw({ ...session, events: [{ ...session.events[0], service: "0x36", serviceName: "Transfer Data", raw: "36 ".repeat(80) }] }, { formatTimeDelta: () => "+1.000s" });
+  assert.equal(rawTransferDataHtml.includes("<details"), false);
+  assert.ok(rawTransferDataHtml.includes("Raw UDS bytes are capped"));
+  assert.equal(renderer.renderDownloadRaw({ ...session, events: [{ ...session.events[0], service: "0x37", serviceName: "Request Transfer Exit", raw: "37 ".repeat(80) }] }, { formatTimeDelta: () => "+1.000s" }).includes("<details"), false);
+  const cappedRawHtml = renderer.renderDownloadRaw({ ...session, events: Array.from({ length: 3 }, (_, index) => ({ ...session.events[0], id: index + 1, service: "0x36", serviceName: "Transfer Data", raw: "36 ".repeat(80) })) }, { formatTimeDelta: () => "+1.000s", rawLimit: 24 });
+  assert.ok(cappedRawHtml.includes("All 3 raw messages remain listed"));
+  assert.ok(cappedRawHtml.includes("<td>3</td>"));
+  assert.equal(cappedRawHtml.includes("36 ".repeat(80)), false);
 }
 
 function assertDownloadControllerContracts() {

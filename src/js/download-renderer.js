@@ -896,8 +896,14 @@
 
   function renderDownloadRaw(session, options = {}) {
     const formatTimeDelta = options.formatTimeDelta || (() => "");
-    const rows = (session.events || []).map((event) => `<tr><td>${event.id}</td><td>${formatTimeDelta(event.timestamp)}</td><td>${event.packet}</td><td>${escapeHtml(event.responseKind)}</td><td>${escapeHtml(event.serviceName)}</td>${rawBytesCell(event.raw)}</tr>`).join("");
-    return `<div class="table-wrap"><table><thead><tr><th>ID</th><th>Time</th><th>Packet</th><th>Kind</th><th>Service</th><th>Raw UDS</th></tr></thead><tbody>${rows || `<tr><td colspan="6">No raw messages.</td></tr>`}</tbody></table></div>`;
+    const events = session.events || [];
+    const rawLimit = Number(options.rawLimit) || 64;
+    const rows = events.map((event) => {
+      const rawCell = rawBytesCell(event.raw, { expandable: false, limit: rawLimit, titleLimit: 128 });
+      return `<tr><td>${event.id}</td><td>${formatTimeDelta(event.timestamp)}</td><td>${event.packet}</td><td>${escapeHtml(event.responseKind)}</td><td>${escapeHtml(event.serviceName)}</td>${rawCell}</tr>`;
+    }).join("");
+    return `<p class="overview-note">Raw UDS bytes are capped in this table to keep large or out-of-sequence downloads responsive. All ${formatNumber(events.length)} raw message${events.length === 1 ? "" : "s"} remain listed; use exports for complete payload data.</p>
+    <div class="table-wrap"><table><thead><tr><th>ID</th><th>Time</th><th>Packet</th><th>Kind</th><th>Service</th><th>Raw UDS</th></tr></thead><tbody>${rows || `<tr><td colspan="6">No raw messages.</td></tr>`}</tbody></table></div>`;
   }
 
   global.HarnessDownloadRenderer = {
