@@ -53,11 +53,16 @@
     const ackObservations = downloadAckObservations(report, transfer, opts);
     const enrichedTransfer = assignObservedDownloadAcks(transfer, ackObservations);
     const events = transferEvents(report, enrichedTransfer, ackObservations);
-    const validation = validateDownloadSession(report, enrichedTransfer, events, opts);
+    const ackMismatchSummary = downloadAckMismatchSummary(enrichedTransfer, ackObservations);
+    const validation = validateDownloadSession(report, enrichedTransfer, events, opts, ackMismatchSummary);
     const severity = validation.some((item) => item.severity === "error") ? "error" : validation.some((item) => item.severity === "warning") ? "warning" : "ok";
     const requestedBytes = enrichedTransfer.request?.memorySize || null;
-    const progress = requestedBytes ? Math.min(1, (enrichedTransfer.reconstructedBytes || 0) / requestedBytes) : null;
-    const duplicateCounters = downloadDuplicateFindings(enrichedTransfer).filter((item) => item.severity === "error").map((item) => item.detail.match(/0x[0-9a-f]+/i)?.[0]).filter(Boolean);
+    const observedPayloadBytes = enrichedTransfer.reconstructedBytes || 0;
+    const progressPayloadBytes = requestedBytes ? Math.min(observedPayloadBytes, requestedBytes) : observedPayloadBytes;
+    const progress = requestedBytes ? Math.min(1, progressPayloadBytes / requestedBytes) : null;
+    const duplicateCounters = downloadDuplicateFindings(enrichedTransfer, { ackMismatchSummary })
+      .filter((item) => item.title === "TransferData block counters reused with different payload")
+      .flatMap((item) => item.counters || [item.detail.match(/0x[0-9a-f]+/i)?.[0]].filter(Boolean));
     const ackHealth = downloadAckHealth(enrichedTransfer, ackObservations);
     const rate = buildTransferRateAnalysis(enrichedTransfer, opts);
     const hexExportable = enrichedTransfer.exportable && validation.every((item) => item.severity !== "error" && !(item.category === "Completeness" && item.severity === "warning")) && (enrichedTransfer.dataBlocks || []).length > 0;
@@ -68,6 +73,8 @@
       sessionType: enrichedTransfer.direction === "fileTransfer" ? "fileTransfer" : enrichedTransfer.direction,
       typeLabel: enrichedTransfer.direction === "upload" ? "RequestUpload" : enrichedTransfer.direction === "fileTransfer" ? "RequestFileTransfer" : "RequestDownload",
       requestedBytes,
+      observedPayloadBytes,
+      progressPayloadBytes,
       progress,
       severity,
       validation,
@@ -76,6 +83,7 @@
       ackMissingCounters: ackHealth.missing,
       ackUnassignedCounters: ackHealth.unassigned,
       ackExtraCounters: ackHealth.extra,
+      ackMismatchSummary,
       rate,
       duplicateCounters: Array.from(new Set(duplicateCounters)),
       events
@@ -359,11 +367,11 @@
     return false;
   }
 
-  function validateDownloadSession(report, transfer, events, options = {}) {
+  function validateDownloadSession(report, transfer, events, options = {}, ackMismatchSummary = null) {
     const opts = defaultOptions(options);
     const findings = [];
-    const addFinding = (severity, category, title, detail, packet = transfer.requestPacket) => findings.push({ severity, category, title, detail, packet });
-    const duplicateFindings = downloadDuplicateFindings(transfer);
+    const addFinding = (severity, category, title, detail, packet = transfer.requestPacket, extra = {}) => findings.push({ severity, category, title, detail, packet, ...extra });
+    const duplicateFindings = downloadDuplicateFindings(transfer, { ackMismatchSummary });
     if (transfer.status === "open") addFinding("error", "Completeness", "Session did not reach TransferExit", "The capture contains a transfer start but no matching RequestTransferExit. Treat this as an incomplete programming sequence unless the capture ended before the ECU could send or receive TransferExit.");
     if (!transfer.blocks) addFinding("warning", "Completeness", "No reconstructable payload blocks", "Harness observed transfer control messages but no payload-bearing TransferData blocks.");
     if (transfer.expectedBlockShortfall) {
@@ -373,9 +381,19 @@
     if (transfer.request?.memorySize && transfer.reconstructedBytes < transfer.request.memorySize) {
       addFinding("warning", "Completeness", "Payload bytes below requested size", `Requested ${opts.formatNumber(transfer.request.memorySize)} bytes but reconstructed ${opts.formatNumber(transfer.reconstructedBytes)} bytes.`);
     }
+    if (transfer.request?.memorySize && transfer.reconstructedBytes > transfer.request.memorySize) {
+      addFinding("info", "Completeness estimate", "Observed payload bytes exceed requested size", `Observed ${opts.formatNumber(transfer.reconstructedBytes)} TransferData payload bytes for a request of ${opts.formatNumber(transfer.request.memorySize)} bytes. Extra observed bytes are usually tester retries, repeated counters, or a broken transfer sequence and are not counted as additional progress.`);
+    }
     if (transfer.missingSequences?.length) addFinding("warning", "Sequence", "Block counter gaps detected", transfer.missingSequences.join(", "));
-    for (const duplicate of duplicateFindings) addFinding(duplicate.severity, "Sequence", duplicate.title, duplicate.detail, duplicate.packet);
-    if (transfer.negatives > 0) addFinding("error", "Responses", "Transfer negative response observed", transfer.responseCodes.join(", ") || "A transfer service received a 0x7F response.");
+    if (ackMismatchSummary?.count) addFinding(
+      "error",
+      "Sequence",
+      "ECU acknowledged wrong TransferData block counter",
+      ackMismatchDetail(ackMismatchSummary, opts),
+      ackMismatchSummary.firstPacket || transfer.requestPacket
+    );
+    for (const duplicate of duplicateFindings) addFinding(duplicate.severity, "Sequence", duplicate.title, duplicate.detail, duplicate.packet, duplicate);
+    if (transfer.negatives > 0) addFinding("error", "Responses", "Transfer negative response observed", transferNegativeResponseDetail(transfer, opts));
     if (transfer.pending > 5) addFinding("info", "Responses", "Repeated response pending", `${transfer.pending} ResponsePending messages were observed.`);
     if (transfer.direction !== "upload" && transfer.acknowledgedBlocks !== transfer.blocks) {
       const ackObservations = downloadAckObservations(report, transfer, opts);
@@ -398,7 +416,7 @@
     return findings;
   }
 
-  function downloadDuplicateFindings(transfer) {
+  function downloadDuplicateFindings(transfer, options = {}) {
     const blocksInOrder = [...(transfer.dataBlocks || [])].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0) || (a.packet || 0) - (b.packet || 0));
     const byCounter = new Map();
     blocksInOrder.forEach((block, index) => {
@@ -406,7 +424,10 @@
       if (!byCounter.has(block.counter)) byCounter.set(block.counter, []);
       byCounter.get(block.counter).push({ block, index });
     });
-    const findings = [];
+    const differentPayloadCounters = [];
+    const identicalPayloadCounters = [];
+    let firstPacket = null;
+    let repeatObservations = 0;
     for (const [counter, entries] of byCounter.entries()) {
       const blocks = entries.map((entry) => entry.block);
       const uniqueEvents = new Map(blocks.map((block) => [block.eventId, block]));
@@ -417,27 +438,164 @@
         return (entry.index - previous.index) % 256 !== 0;
       });
       if (!unexpectedRepeats.length) continue;
+      repeatObservations += unexpectedRepeats.length;
+      firstPacket ??= unexpectedRepeats[0].block.packet;
       const payloads = new Set(blocks.map((block) => block.payloadHex));
       if (payloads.size > 1) {
         const hasCaptureLossEvidence = (transfer.missingSequences || []).some(isForwardMissingSequence);
-        findings.push({
-          severity: hasCaptureLossEvidence ? "warning" : "error",
-          title: hasCaptureLossEvidence ? "Repeated block counter with different payload near capture gaps" : "Duplicate block counter with different payload",
-          detail: hasCaptureLossEvidence
-            ? `${counter} repeats with different payload bytes, but missing sequence evidence means this may be counter wrap after capture loss.`
-            : `${counter} repeats before the expected 256-block wrap distance and carries different payload bytes.`,
-          packet: unexpectedRepeats[0].block.packet
-        });
+        differentPayloadCounters.push({ counter, severity: hasCaptureLossEvidence ? "warning" : "error" });
       } else {
-        findings.push({
-          severity: "info",
-          title: "Repeated block counter with identical payload suppressed",
-          detail: `${counter} repeats before the expected 256-block wrap distance with identical payload bytes; this is treated as capture/reassembly context, not a protocol failure.`,
-          packet: unexpectedRepeats[0].block.packet
-        });
+        identicalPayloadCounters.push(counter);
       }
     }
+    const findings = [];
+    if (differentPayloadCounters.length) {
+      const hasAckMismatch = Boolean(options.ackMismatchSummary?.count);
+      const warningOnly = differentPayloadCounters.every((item) => item.severity === "warning");
+      const counters = differentPayloadCounters.map((item) => item.counter);
+      findings.push({
+        severity: hasAckMismatch ? "info" : warningOnly ? "warning" : "error",
+        title: "TransferData block counters reused with different payload",
+        detail: duplicatePayloadDetail(counters, repeatObservations, options.ackMismatchSummary),
+        packet: firstPacket,
+        counters,
+        suppressValidationCentre: hasAckMismatch
+      });
+    }
+    if (identicalPayloadCounters.length) {
+      findings.push({
+        severity: "info",
+        title: "Repeated block counter with identical payload suppressed",
+        detail: `${identicalPayloadCounters.length} block counter${identicalPayloadCounters.length === 1 ? "" : "s"} repeated with identical payload bytes; this is treated as retry/reassembly context, not a protocol failure. Counters: ${sampleList(identicalPayloadCounters)}.`,
+        packet: firstPacket,
+        counters: identicalPayloadCounters,
+        suppressValidationCentre: true
+      });
+    }
     return findings;
+  }
+
+  function downloadAckMismatchSummary(transfer, observations = null) {
+    if (transfer.direction === "upload") return { count: 0, samples: [] };
+    const blocks = [...(transfer.dataBlocks || [])]
+      .filter((block) => block.counter)
+      .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0) || (a.packet || 0) - (b.packet || 0));
+    const acks = [...(observations?.events || transfer.ackBlocks || [])]
+      .filter((ack) => ack.counter)
+      .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0) || (a.packet || 0) - (b.packet || 0));
+    const mismatches = [];
+    let blockIndex = 0;
+    for (const ack of acks) {
+      while (blockIndex + 1 < blocks.length && Number(blocks[blockIndex + 1].timestamp) <= Number(ack.timestamp) + 0.000001) blockIndex += 1;
+      const request = blocks[blockIndex];
+      if (!request || Number(request.timestamp) > Number(ack.timestamp) + 0.000001) continue;
+      if (request.counter === ack.counter) continue;
+      const requestValue = parseCounterValue(request.counter);
+      const ackValue = parseCounterValue(ack.counter);
+      mismatches.push({
+        requestCounter: request.counter,
+        ackCounter: ack.counter,
+        requestPacket: request.packet,
+        ackPacket: ack.packet,
+        requestTimestamp: request.timestamp,
+        ackTimestamp: ack.timestamp,
+        offset: signedCounterOffset(requestValue, ackValue)
+      });
+    }
+    if (!mismatches.length) return { count: 0, samples: [] };
+    const offsetCounts = new Map();
+    for (const item of mismatches) offsetCounts.set(item.offset, (offsetCounts.get(item.offset) || 0) + 1);
+    const dominant = Array.from(offsetCounts.entries()).sort((a, b) => b[1] - a[1])[0] || [null, 0];
+    return {
+      count: mismatches.length,
+      firstPacket: mismatches[0].ackPacket,
+      lastPacket: mismatches[mismatches.length - 1].ackPacket,
+      dominantOffset: dominant[0],
+      dominantOffsetCount: dominant[1],
+      samples: mismatches.slice(0, 5)
+    };
+  }
+
+  function ackMismatchDetail(summary, options = {}) {
+    const opts = defaultOptions(options);
+    const offsetText = summary.dominantOffset === -1
+      ? "Most common pattern: ECU ACK appears 1 block behind tester."
+      : summary.dominantOffset === 1
+        ? "Most common pattern: ECU ACK appears 1 block ahead of tester."
+        : Number.isFinite(summary.dominantOffset)
+          ? `Most common counter offset: ${summary.dominantOffset > 0 ? "+" : ""}${summary.dominantOffset}.`
+          : "";
+    const samples = (summary.samples || [])
+      .map((item) => `tester ${item.requestCounter} packet ${item.requestPacket} -> ECU ${item.ackCounter} packet ${item.ackPacket}`)
+      .join("; ");
+    return `${opts.formatNumber(summary.count)} ACK mismatch${summary.count === 1 ? "" : "es"} observed between chronological TransferData requests and positive 0x76 responses. ${offsetText} Packet range ${summary.firstPacket || ""}-${summary.lastPacket || ""}.${samples ? ` Samples: ${samples}.` : ""}`;
+  }
+
+  function duplicatePayloadDetail(counters, repeatObservations, ackMismatchSummary = null) {
+    const cause = ackMismatchSummary?.count
+      ? " This appears secondary to the TransferData ACK counter mismatch in this session."
+      : "";
+    return `${counters.length} block counter${counters.length === 1 ? "" : "s"} reused before the expected 256-block wrap distance with different payload bytes across ${repeatObservations} repeat observation${repeatObservations === 1 ? "" : "s"}. Counters: ${sampleList(counters)}.${cause}`;
+  }
+
+  function transferNegativeResponseDetail(transfer, options = {}) {
+    const opts = defaultOptions(options);
+    const groups = new Map();
+    const negatives = transfer.negativeEvents?.length
+      ? transfer.negativeEvents
+      : (transfer.responseCodes || []).map((value) => {
+          const [service = "", nrc = "", ...nameParts] = String(value).split(/\s+/);
+          return { service, nrc, nrcName: nameParts.join(" ") };
+        });
+    for (const item of negatives) {
+      const service = item.service || "unknown service";
+      const nrc = item.nrc || "unknown NRC";
+      const key = `${service}|${nrc}|${item.nrcName || ""}`;
+      if (!groups.has(key)) {
+        groups.set(key, {
+          service,
+          nrc,
+          nrcName: item.nrcName || "",
+          count: 0,
+          packets: [],
+          firstPacket: item.packet || null,
+          lastPacket: item.packet || null
+        });
+      }
+      const group = groups.get(key);
+      group.count += 1;
+      if (item.packet) {
+        group.packets.push(item.packet);
+        group.firstPacket ??= item.packet;
+        group.lastPacket = item.packet;
+      }
+    }
+    const rows = Array.from(groups.values()).sort((a, b) => b.count - a.count || String(a.nrc).localeCompare(String(b.nrc)));
+    const summary = rows.slice(0, 6).map((group) => {
+      const name = group.nrcName ? ` ${group.nrcName}` : "";
+      const packetText = group.packets.length
+        ? ` packets ${sampleList(group.packets.map((packet) => String(packet)), 5)}${group.packets.length > 5 ? `; last ${group.lastPacket}` : ""}`
+        : "";
+      return `${group.service} ${group.nrc}${name}: ${opts.formatNumber(group.count)}${packetText}`;
+    }).join("; ");
+    const extra = rows.length > 6 ? `; plus ${opts.formatNumber(rows.length - 6)} other NRC group${rows.length - 6 === 1 ? "" : "s"}` : "";
+    return `${opts.formatNumber(transfer.negatives || negatives.length)} transfer negative response${(transfer.negatives || negatives.length) === 1 ? "" : "s"} observed. ${summary || "A transfer service received a 0x7F response"}${extra}.`;
+  }
+
+  function sampleList(values, limit = 12) {
+    const list = values.slice(0, limit).join(", ");
+    return values.length > limit ? `${list}, ...` : list;
+  }
+
+  function parseCounterValue(counter) {
+    const value = parseInt(String(counter || "").replace(/^0x/i, ""), 16);
+    return Number.isFinite(value) ? value & 0xff : null;
+  }
+
+  function signedCounterOffset(requestValue, ackValue) {
+    if (requestValue === null || ackValue === null) return null;
+    const raw = (ackValue - requestValue + 256) & 0xff;
+    return raw > 127 ? raw - 256 : raw;
   }
 
   function isForwardMissingSequence(sequence) {
@@ -466,6 +624,8 @@
     isSameTransferBoundaryEvent,
     validateDownloadSession,
     downloadDuplicateFindings,
+    downloadAckMismatchSummary,
+    transferNegativeResponseDetail,
     isForwardMissingSequence
   });
 })(window);

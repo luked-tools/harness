@@ -50,6 +50,7 @@
     };
 
     for (const item of report.downloadAnalysis?.findings || []) {
+      if (item.suppressValidationCentre) continue;
       if (item.severity === "info" && item.category === "Validation") continue;
       const session = (report.downloadAnalysis?.sessions || []).find((candidate) => String(candidate.id) === String(item.sessionId));
       addFinding({

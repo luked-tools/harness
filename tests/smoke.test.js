@@ -1636,6 +1636,23 @@ function assertValidationAnalysisContracts() {
   assert.equal(titles.includes("Ambiguous topology identity"), false);
   assert.equal(titles.includes("TCP gap in DoIP stream ignored here"), false);
 
+  const suppressedDownloadFinding = validation.buildValidationCentre({
+    downloadAnalysis: {
+      sessions: [{ id: 1, startTimestamp: 1 }],
+      findings: [
+        { severity: "error", category: "Sequence", title: "ECU acknowledged wrong TransferData block counter", detail: "Wrong ACK", sessionId: 1, ecuAddress: "0x1001", packet: 30 },
+        { severity: "info", category: "Sequence", title: "TransferData block counters reused with different payload", detail: "Secondary duplicate symptom", sessionId: 1, ecuAddress: "0x1001", packet: 31, suppressValidationCentre: true }
+      ]
+    },
+    tcpAnalysis: { flows: [], events: [], gaps: [] },
+    identity: { findings: [] },
+    warnings: [],
+    topology: { nodes: [] },
+    diagnostics: { udsEvents: [] }
+  });
+  assert.equal(suppressedDownloadFinding.findings.some((finding) => finding.title === "ECU acknowledged wrong TransferData block counter"), true);
+  assert.equal(suppressedDownloadFinding.findings.some((finding) => finding.detail === "Secondary duplicate symptom"), false);
+
   assert.equal(
     validation.isRecoveredSecurityInvalidKey(
       { diagnostics: { udsEvents: [
@@ -1990,6 +2007,69 @@ function assertDownloadAnalysisContracts() {
     }),
     missingSequences: []
   };
+  const mismatchTransfer = {
+    ...transfer,
+    id: 99,
+    dataBlocks: [
+      { eventId: 201, counter: "0x11", packet: 201, timestamp: 3.1, payloadBytes: 1, payloadHex: "aa" },
+      { eventId: 202, counter: "0x12", packet: 202, timestamp: 3.2, payloadBytes: 1, payloadHex: "bb" },
+      { eventId: 203, counter: "0x12", packet: 203, timestamp: 3.3, payloadBytes: 1, payloadHex: "cc" }
+    ],
+    ackBlocks: [],
+    acknowledgedBlocks: 0,
+    blocks: 3,
+    reconstructedBytes: 3,
+    startTimestamp: 3,
+    endTimestamp: 4,
+    requestPacket: 200,
+    requestEventId: 200,
+    timelineEventIds: [200, 204]
+  };
+  const mismatchReport = {
+    diagnostics: {
+      ecus: { "0x1001": { ips: ["10.0.0.20"] } },
+      udsEvents: [
+        { id: 200, service: "0x34", direction: "request", ecuAddress: "0x1001", testerAddress: "0x0e00", timestamp: 3, packet: 200, srcIp: "10.0.0.10", srcPort: 50000, dstIp: "10.0.0.20", dstPort: 13400, raw: "34" },
+        { id: 201, service: "0x36", direction: "request", ecuAddress: "0x1001", testerAddress: "0x0e00", timestamp: 3.1, packet: 201, srcIp: "10.0.0.10", srcPort: 50000, dstIp: "10.0.0.20", dstPort: 13400, raw: "36 11 aa" },
+        { id: 202, service: "0x36", direction: "request", ecuAddress: "0x1001", testerAddress: "0x0e00", timestamp: 3.2, packet: 202, srcIp: "10.0.0.10", srcPort: 50000, dstIp: "10.0.0.20", dstPort: 13400, raw: "36 12 bb" },
+        { id: 203, service: "0x36", direction: "request", ecuAddress: "0x1001", testerAddress: "0x0e00", timestamp: 3.3, packet: 203, srcIp: "10.0.0.10", srcPort: 50000, dstIp: "10.0.0.20", dstPort: 13400, raw: "36 12 cc" },
+        { id: 204, service: "0x77", direction: "response", ecuAddress: "0x1001", testerAddress: "0x0e00", timestamp: 4, packet: 204, srcIp: "10.0.0.20", srcPort: 13400, dstIp: "10.0.0.10", dstPort: 50000, raw: "77" },
+        { id: 205, service: "0x76", direction: "response", ecuAddress: "0x1001", testerAddress: "0x0e00", timestamp: 3.25, packet: 205, transfer: { blockCounter: 0x11 }, raw: "76 11" },
+        { id: 206, service: "0x76", direction: "response", ecuAddress: "0x1001", testerAddress: "0x0e00", timestamp: 3.35, packet: 206, transfer: { blockCounter: 0x11 }, raw: "76 11" }
+      ],
+      transfers: [mismatchTransfer]
+    },
+    doip: { announcements: [{ srcIp: "10.0.0.20", logicalAddress: "0x1001" }] },
+    tcpAnalysis: { gaps: [] }
+  };
+  const retryTransfer = {
+    ...transfer,
+    dataBlocks: [
+      { eventId: 301, counter: "0x11", packet: 301, timestamp: 5.1, payloadBytes: 1, payloadHex: "aa" },
+      { eventId: 302, counter: "0x12", packet: 302, timestamp: 5.2, payloadBytes: 1, payloadHex: "bb" },
+      { eventId: 303, counter: "0x11", packet: 303, timestamp: 5.3, payloadBytes: 1, payloadHex: "aa" }
+    ]
+  };
+  const overObserved = downloads.enrichDownloadSession(report, {
+    ...transfer,
+    request: { memorySize: 4 },
+    reconstructedBytes: 6,
+    dataBlocks: transfer.dataBlocks,
+    missingSequences: []
+  });
+  const noisyNegatives = downloads.enrichDownloadSession(report, {
+    ...transfer,
+    negatives: 8,
+    responseCodes: Array.from({ length: 8 }, () => "0x36 0x73 Wrong block sequence counter"),
+    negativeEvents: Array.from({ length: 8 }, (_, index) => ({
+      eventId: 400 + index,
+      packet: 500 + index,
+      timestamp: 6 + index / 100,
+      service: "0x36",
+      nrc: "0x73",
+      nrcName: "Wrong block sequence counter"
+    }))
+  });
   const openTransfer = downloads.enrichDownloadSession(report, {
     ...transfer,
     status: "open",
@@ -2004,11 +2084,30 @@ function assertDownloadAnalysisContracts() {
   assert.deepEqual(plain(downloads.downloadAckHealth(assigned, ackObservations)), { missing: [], unassigned: [], extra: [] });
   assert.equal(duplicateFindings.length, 1);
   assert.equal(duplicateFindings[0].severity, "error");
+  assert.equal(duplicateFindings[0].title, "TransferData block counters reused with different payload");
+  assert.deepEqual(plain(duplicateFindings[0].counters), ["0x02"]);
   assert.equal(downloads.isForwardMissingSequence("0x03->0x02"), false);
   assert.equal(downloads.isForwardMissingSequence("0x03->0xff"), true);
   assert.equal(duplicateWithCaptureLoss[0].severity, "warning");
   assert.equal(duplicateWithBackwardRepeat[0].severity, "error");
   assert.equal(downloads.downloadDuplicateFindings(wrappedCounterTransfer).length, 0);
+  const mismatchSummary = downloads.downloadAckMismatchSummary(mismatchTransfer, { events: mismatchReport.diagnostics.udsEvents.filter((event) => event.service === "0x76").map((event) => ({ eventId: event.id, packet: event.packet, timestamp: event.timestamp, counter: `0x${event.transfer.blockCounter.toString(16).padStart(2, "0")}` })) });
+  assert.equal(mismatchSummary.count, 2);
+  assert.equal(mismatchSummary.dominantOffset, -1);
+  assert.equal(downloads.downloadAckMismatchSummary(retryTransfer, { events: [{ eventId: 304, packet: 304, timestamp: 5.31, counter: "0x11" }] }).count, 0);
+  const mismatchAnalysis = downloads.buildDownloadAnalysis(mismatchReport);
+  assert.equal(mismatchAnalysis.findings.filter((finding) => finding.title === "ECU acknowledged wrong TransferData block counter").length, 1);
+  assert.equal(mismatchAnalysis.findings.filter((finding) => finding.title === "TransferData block counters reused with different payload").length, 1);
+  assert.equal(mismatchAnalysis.findings.find((finding) => finding.title === "TransferData block counters reused with different payload").suppressValidationCentre, true);
+  assert.equal(mismatchAnalysis.sessions[0].duplicateCounters.includes("0x12"), true);
+  assert.equal(overObserved.progressPayloadBytes, 4);
+  assert.equal(overObserved.observedPayloadBytes, 6);
+  assert.equal(overObserved.progress, 1);
+  assert.ok(overObserved.validation.some((finding) => finding.title === "Observed payload bytes exceed requested size" && finding.severity === "info"));
+  const transferNegativeDetail = noisyNegatives.validation.find((finding) => finding.title === "Transfer negative response observed").detail;
+  assert.ok(transferNegativeDetail.includes("8 transfer negative responses observed"));
+  assert.ok(transferNegativeDetail.includes("0x36 0x73 Wrong block sequence counter: 8"));
+  assert.equal((transferNegativeDetail.match(/0x36 0x73/g) || []).length, 1);
   assert.equal(openTransfer.severity, "error");
   assert.ok(openTransfer.validation.some((finding) => finding.title === "Session did not reach TransferExit" && finding.severity === "error"));
   assert.equal(openTransfer.hexExportable, false);
@@ -2870,6 +2969,14 @@ function assertDownloadRendererContracts() {
   assert.ok(renderer.renderDidPlotModal({}, [{ timestamp: 1, value: 10, packet: 1, hex: "0x0a" }, { timestamp: 2, value: 11, packet: 2, hex: "0x0b" }], { formatTimeDelta: () => "+1.000s" }).includes("Samples"));
   assert.ok(renderer.renderDirectionDiagram(session, { ecuCode: (address) => `ECU ${address}` }).includes("Tester payload via 0x36"));
   assert.ok(renderer.renderPayloadProgress(session).includes("128 of 256 bytes (50%)"));
+  assert.ok(renderer.renderPayloadProgress({
+    ...session,
+    requestedBytes: 4,
+    reconstructedBytes: 6,
+    observedPayloadBytes: 6,
+    progressPayloadBytes: 4,
+    progress: 1
+  }).includes("6 B observed in the capture including retries or repeated transfer blocks."));
   assert.ok(renderer.renderBlockStrip(session).includes("block-slot observed duplicate"));
   const wrappedSlots = renderer.blockStripSlots({
     expectedBlocks: 256,

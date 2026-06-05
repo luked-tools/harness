@@ -250,10 +250,16 @@
 
   function renderPayloadProgress(session) {
     const pct = session.progress === null ? null : Math.round(session.progress * 100);
+    const progressBytes = session.progressPayloadBytes ?? session.reconstructedBytes ?? 0;
+    const observedBytes = session.observedPayloadBytes ?? session.reconstructedBytes ?? 0;
+    const observedNote = session.requestedBytes && observedBytes > progressBytes
+      ? `<p class="subtle">${formatBytes(observedBytes)} observed in the capture including retries or repeated transfer blocks.</p>`
+      : "";
     return `<div class="progress-panel">
     <h4>Payload Progress</h4>
     <div class="payload-progress"><span style="width:${pct ?? 0}%"></span></div>
-    <p class="subtle">${formatNumber(session.reconstructedBytes)}${session.requestedBytes ? ` of ${formatNumber(session.requestedBytes)}` : ""} bytes${pct !== null ? ` (${pct}%)` : ""}</p>
+    <p class="subtle">${formatNumber(progressBytes)}${session.requestedBytes ? ` of ${formatNumber(session.requestedBytes)}` : ""} bytes${pct !== null ? ` (${pct}%)` : ""}</p>
+    ${observedNote}
     <p>${badge(session.hexExportable ? "Hex exportable" : "Not exportable", session.hexExportable ? "ok" : "warn")}</p>
   </div>`;
   }
