@@ -17,7 +17,7 @@
       packet,
       timestamp,
       srcMac,
-      bytes: new Uint8Array(view.buffer.slice(start, end))
+      bytes: new Uint8Array(view.buffer, view.byteOffset + start, end - start)
     });
   }
 
@@ -56,7 +56,7 @@
         if (expectedSeq !== null && segment.seq < expectedSeq) {
           const overlap = expectedSeq - segment.seq;
           if (overlap >= segment.bytes.length) continue;
-          const trimmed = segment.bytes.slice(overlap);
+          const trimmed = segment.bytes.subarray(overlap);
           for (const byte of trimmed) {
             metas.push(segment);
             bytes.push(byte);

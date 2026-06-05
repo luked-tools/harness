@@ -778,7 +778,8 @@ function assertTcpDoipReassemblyContracts() {
   const tcpSegments = new Map();
   const report = { warnings: [], tcpAnalysis: { gaps: [] } };
   const chunks = [];
-  const view = new DataView(new Uint8Array([10, 11, 12, 13]).buffer);
+  const backing = new Uint8Array([10, 11, 12, 13]);
+  const view = new DataView(backing.buffer);
 
   assert.equal(reassembly.tcpConnectionKey("b", 2, "a", 1), "a:1 <-> b:2");
   assert.ok(reassembly.doipPayloadScore(completeDoip) > reassembly.doipPayloadScore(partialDoip));
@@ -787,6 +788,12 @@ function assertTcpDoipReassemblyContracts() {
   reassembly.collectTcpSegment(tcpSegments, "10.0.0.1", 50000, "10.0.0.2", 13400, 1, 100, view, 0, 2, 1, 1, "aa:aa:aa:aa:aa:aa");
   reassembly.collectTcpSegment(tcpSegments, "10.0.0.1", 50000, "10.0.0.2", 13400, 1, 101, view, 1, 3, 2, 2, "aa:aa:aa:aa:aa:aa");
   reassembly.collectTcpSegment(tcpSegments, "10.0.0.1", 50000, "10.0.0.2", 13400, 1, 105, view, 3, 4, 3, 3, "aa:aa:aa:aa:aa:aa");
+  const collectedSegments = Array.from(tcpSegments.values())[0].segments;
+  assert.deepEqual(Array.from(collectedSegments[0].bytes), [10, 11]);
+  assert.equal(collectedSegments[0].bytes.buffer, backing.buffer);
+  backing[3] = 99;
+  assert.deepEqual(Array.from(collectedSegments[0].bytes), [10, 11]);
+  backing[3] = 13;
   reassembly.parseTcpDoipSegments(tcpSegments, report, new Set(), {
     tcpFlowKey: (srcIp, srcPort, dstIp, dstPort) => `${srcIp}:${srcPort}>${dstIp}:${dstPort}`,
     parseDoipBytes: (bytes, metaForOffset, transport, srcIp, srcPort, dstIp, dstPort) => {
