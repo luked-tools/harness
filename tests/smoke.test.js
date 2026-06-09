@@ -2057,6 +2057,13 @@ function assertDownloadAnalysisContracts() {
       { eventId: 303, counter: "0x11", packet: 303, timestamp: 5.3, payloadBytes: 1, payloadHex: "aa" }
     ]
   };
+  const pipelinedTransfer = {
+    ...transfer,
+    dataBlocks: [
+      { eventId: 311, counter: "0x11", packet: 311, timestamp: 7.1, payloadBytes: 1, payloadHex: "aa" },
+      { eventId: 312, counter: "0x12", packet: 312, timestamp: 7.2, payloadBytes: 1, payloadHex: "bb" }
+    ]
+  };
   const overObserved = downloads.enrichDownloadSession(report, {
     ...transfer,
     request: { memorySize: 4 },
@@ -2099,9 +2106,13 @@ function assertDownloadAnalysisContracts() {
   assert.equal(duplicateWithBackwardRepeat[0].severity, "error");
   assert.equal(downloads.downloadDuplicateFindings(wrappedCounterTransfer).length, 0);
   const mismatchSummary = downloads.downloadAckMismatchSummary(mismatchTransfer, { events: mismatchReport.diagnostics.udsEvents.filter((event) => event.service === "0x76").map((event) => ({ eventId: event.id, packet: event.packet, timestamp: event.timestamp, counter: `0x${event.transfer.blockCounter.toString(16).padStart(2, "0")}` })) });
-  assert.equal(mismatchSummary.count, 2);
+  assert.equal(mismatchSummary.count, 1);
   assert.equal(mismatchSummary.dominantOffset, -1);
   assert.equal(downloads.downloadAckMismatchSummary(retryTransfer, { events: [{ eventId: 304, packet: 304, timestamp: 5.31, counter: "0x11" }] }).count, 0);
+  assert.equal(downloads.downloadAckMismatchSummary(pipelinedTransfer, { events: [
+    { eventId: 313, packet: 313, timestamp: 7.25, counter: "0x11" },
+    { eventId: 314, packet: 314, timestamp: 7.3, counter: "0x12" }
+  ] }).count, 0);
   const mismatchAnalysis = downloads.buildDownloadAnalysis(mismatchReport);
   assert.equal(mismatchAnalysis.findings.filter((finding) => finding.title === "ECU acknowledged wrong TransferData block counter").length, 1);
   assert.equal(mismatchAnalysis.findings.filter((finding) => finding.title === "TransferData block counters reused with different payload").length, 1);

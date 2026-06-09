@@ -484,23 +484,41 @@
       .filter((ack) => ack.counter)
       .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0) || (a.packet || 0) - (b.packet || 0));
     const mismatches = [];
-    let blockIndex = 0;
+    const blocksByEventId = new Map(blocks.map((block) => [block.eventId, block]).filter(([id]) => id !== null && id !== undefined));
+    const usedRequestIds = new Set();
+    const canMatchAck = (block, ack) => Number(block.timestamp) <= Number(ack.timestamp) + 0.000001;
+    const markUsed = (block) => {
+      if (block?.eventId !== null && block?.eventId !== undefined) usedRequestIds.add(block.eventId);
+    };
+    const unusedSameCounterRequest = (ack) => blocks.find((block) =>
+      block.counter === ack.counter &&
+      canMatchAck(block, ack) &&
+      (block.eventId === null || block.eventId === undefined || !usedRequestIds.has(block.eventId))
+    );
+    const newestUnusedChronologicalRequest = (ack) => [...blocks]
+      .reverse()
+      .find((block) =>
+        canMatchAck(block, ack) &&
+        (block.eventId === null || block.eventId === undefined || !usedRequestIds.has(block.eventId))
+      );
     for (const ack of acks) {
-      while (blockIndex + 1 < blocks.length && Number(blocks[blockIndex + 1].timestamp) <= Number(ack.timestamp) + 0.000001) blockIndex += 1;
-      const request = blocks[blockIndex];
-      if (!request || Number(request.timestamp) > Number(ack.timestamp) + 0.000001) continue;
+      if (ack.requestEventId && blocksByEventId.has(ack.requestEventId)) {
+        const explicitRequest = blocksByEventId.get(ack.requestEventId);
+        markUsed(explicitRequest);
+        if (explicitRequest.counter === ack.counter) continue;
+        mismatches.push(ackMismatchSample(explicitRequest, ack));
+        continue;
+      }
+      const sameCounterRequest = unusedSameCounterRequest(ack);
+      if (sameCounterRequest) {
+        markUsed(sameCounterRequest);
+        continue;
+      }
+      const request = newestUnusedChronologicalRequest(ack);
+      if (!request) continue;
+      markUsed(request);
       if (request.counter === ack.counter) continue;
-      const requestValue = parseCounterValue(request.counter);
-      const ackValue = parseCounterValue(ack.counter);
-      mismatches.push({
-        requestCounter: request.counter,
-        ackCounter: ack.counter,
-        requestPacket: request.packet,
-        ackPacket: ack.packet,
-        requestTimestamp: request.timestamp,
-        ackTimestamp: ack.timestamp,
-        offset: signedCounterOffset(requestValue, ackValue)
-      });
+      mismatches.push(ackMismatchSample(request, ack));
     }
     if (!mismatches.length) return { count: 0, samples: [] };
     const offsetCounts = new Map();
@@ -513,6 +531,20 @@
       dominantOffset: dominant[0],
       dominantOffsetCount: dominant[1],
       samples: mismatches.slice(0, 5)
+    };
+  }
+
+  function ackMismatchSample(request, ack) {
+    const requestValue = parseCounterValue(request.counter);
+    const ackValue = parseCounterValue(ack.counter);
+    return {
+      requestCounter: request.counter,
+      ackCounter: ack.counter,
+      requestPacket: request.packet,
+      ackPacket: ack.packet,
+      requestTimestamp: request.timestamp,
+      ackTimestamp: ack.timestamp,
+      offset: signedCounterOffset(requestValue, ackValue)
     };
   }
 
